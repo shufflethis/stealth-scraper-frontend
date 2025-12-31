@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://152.53.160.189:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.texttoaction.de';
 
 export interface ScrapeRequest {
   url: string;
