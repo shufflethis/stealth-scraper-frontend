@@ -1,4 +1,11 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.texttoaction.de';
+// Runtime API URL - not build time
+const getApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    return 'https://api.texttoaction.de';
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'https://api.texttoaction.de';
+};
+const API_URL = 'https://api.texttoaction.de';
 
 export interface ScrapeRequest {
   url: string;
