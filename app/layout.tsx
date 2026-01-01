@@ -16,6 +16,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
+      <head>
+        {/* Travelpayouts Affiliate Tracking */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                var script = document.createElement("script");
+                script.async = 1;
+                script.src = 'https://tpembars.com/NDg1MTk5.js?t=485199';
+                document.head.appendChild(script);
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.className} text-white`}>{children}</body>
     </html>
   )
