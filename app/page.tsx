@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { scrape, scrapeAI, getModels, getTemplates, healthCheck, ScrapeResponse } from '@/lib/api';
+import { scrape, scrapeAI, getModels, getTemplates, healthCheck, ScrapeResponse, searchFlights, searchFlightsAmadeus, generateBookingLink, generateSkyscannerLink } from '@/lib/api';
 
 export default function Home() {
   const [url, setUrl] = useState('');
@@ -12,10 +12,16 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScrapeResponse | null>(null);
   const [error, setError] = useState('');
-  const [mode, setMode] = useState<'simple' | 'ai'>('simple');
+  const [mode, setMode] = useState<'flights' | 'simple' | 'ai'>('flights');
   const [models, setModels] = useState<string[]>([]);
   const [templates, setTemplates] = useState<string[]>([]);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  // Flight search state
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [flightDate, setFlightDate] = useState('');
+  const [flightResults, setFlightResults] = useState<any>(null);
 
   useEffect(() => {
     // Load models and templates
@@ -25,6 +31,46 @@ export default function Home() {
     // Check API health
     healthCheck().then(ok => setApiStatus(ok ? 'online' : 'offline'));
   }, []);
+
+  const handleFlightSearch = async () => {
+    if (!origin || !destination) {
+      setError('Bitte Abflug und Ziel eingeben (z.B. FRA, KUL)');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setFlightResults(null);
+
+    try {
+      // Search with Amadeus for live data
+      const result = await searchFlightsAmadeus(
+        origin.toUpperCase(),
+        destination.toUpperCase(),
+        flightDate || new Date().toISOString().split('T')[0]
+      );
+
+      if (result.success) {
+        setFlightResults(result);
+      } else {
+        setError(result.error || 'Keine Flüge gefunden');
+      }
+    } catch (e: any) {
+      // Fallback to Travelpayouts
+      try {
+        const result = await searchFlights(origin.toUpperCase(), destination.toUpperCase(), flightDate);
+        if (result.success) {
+          setFlightResults(result);
+        } else {
+          setError(result.error || 'Keine Flüge gefunden');
+        }
+      } catch (e2: any) {
+        setError(e2.message || 'Flugsuche fehlgeschlagen');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleScrape = async () => {
     if (!url) {
@@ -108,6 +154,16 @@ export default function Home() {
         {/* Mode Toggle */}
         <div className="flex justify-center gap-4 mb-6">
           <button
+            onClick={() => setMode('flights')}
+            className={`px-6 py-2 rounded-lg transition-all ${
+              mode === 'flights'
+                ? 'bg-green-500 text-black font-semibold'
+                : 'bg-cyber-card cyber-border text-gray-300 hover:bg-gray-800'
+            }`}
+          >
+            ✈️ Flugsuche
+          </button>
+          <button
             onClick={() => setMode('simple')}
             className={`px-6 py-2 rounded-lg transition-all ${
               mode === 'simple'
@@ -115,7 +171,7 @@ export default function Home() {
                 : 'bg-cyber-card cyber-border text-gray-300 hover:bg-gray-800'
             }`}
           >
-            🌐 Einfach
+            🌐 Scraper
           </button>
           <button
             onClick={() => setMode('ai')}
@@ -125,23 +181,102 @@ export default function Home() {
                 : 'bg-cyber-card cyber-border text-gray-300 hover:bg-gray-800'
             }`}
           >
-            🤖 AI-gesteuert
+            🤖 AI-Scraper
           </button>
         </div>
 
         {/* Main Card */}
         <div className="bg-cyber-card cyber-border rounded-xl p-6 mb-6">
-          {/* URL Input */}
-          <div className="mb-4">
-            <label className="block text-gray-400 text-sm mb-2">URL</label>
-            <input
-              type="url"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://www.flytap.com/de-de/stopover"
-              className="w-full bg-cyber-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-cyber-blue focus:outline-none transition-colors"
-            />
-          </div>
+
+          {/* Flight Search Mode */}
+          {mode === 'flights' ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Von (IATA Code)</label>
+                  <input
+                    type="text"
+                    value={origin}
+                    onChange={e => setOrigin(e.target.value.toUpperCase())}
+                    placeholder="MXP"
+                    maxLength={3}
+                    className="w-full bg-cyber-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-green-500 focus:outline-none transition-colors uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Nach (IATA Code)</label>
+                  <input
+                    type="text"
+                    value={destination}
+                    onChange={e => setDestination(e.target.value.toUpperCase())}
+                    placeholder="KUL"
+                    maxLength={3}
+                    className="w-full bg-cyber-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-green-500 focus:outline-none transition-colors uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Datum</label>
+                  <input
+                    type="date"
+                    value={flightDate}
+                    onChange={e => setFlightDate(e.target.value)}
+                    className="w-full bg-cyber-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-green-500 focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Quick Route Buttons */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <span className="text-gray-500 text-sm">Schnellauswahl:</span>
+                {[
+                  { from: 'BCN', to: 'KUL', label: 'BCN→KUL (Saudia €240)' },
+                  { from: 'MXP', to: 'KUL', label: 'MXP→KUL (€350)' },
+                  { from: 'FRA', to: 'KUL', label: 'FRA→KUL' },
+                  { from: 'AMS', to: 'KUL', label: 'AMS→KUL' },
+                ].map(route => (
+                  <button
+                    key={route.label}
+                    onClick={() => { setOrigin(route.from); setDestination(route.to); }}
+                    className="px-3 py-1 text-sm bg-cyber-dark border border-gray-700 rounded-full hover:border-green-500 transition-colors"
+                  >
+                    {route.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Button */}
+              <button
+                onClick={handleFlightSearch}
+                disabled={loading || apiStatus === 'offline'}
+                className={`w-full py-4 rounded-lg font-semibold text-lg transition-all ${
+                  loading || apiStatus === 'offline'
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-500 text-black hover:bg-green-400'
+                }`}
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <div className="loader" style={{ width: 24, height: 24, borderWidth: 2 }} />
+                    Suche läuft...
+                  </span>
+                ) : (
+                  '✈️ Flüge suchen'
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              {/* URL Input for Scraper modes */}
+              <div className="mb-4">
+                <label className="block text-gray-400 text-sm mb-2">URL</label>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  placeholder="https://www.flytap.com/de-de/stopover"
+                  className="w-full bg-cyber-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-cyber-blue focus:outline-none transition-colors"
+                />
+              </div>
 
           {mode === 'simple' ? (
             <>
@@ -223,12 +358,86 @@ export default function Home() {
               '🚀 Scrapen'
             )}
           </button>
+            </>
+          )}
         </div>
 
         {/* Error */}
         {error && (
           <div className="bg-red-900/30 border border-red-500 rounded-xl p-4 mb-6">
             <p className="text-red-400">❌ {error}</p>
+          </div>
+        )}
+
+        {/* Flight Results */}
+        {flightResults && flightResults.success && (
+          <div className="bg-cyber-card cyber-border rounded-xl p-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-green-400">
+                ✈️ {flightResults.origin} → {flightResults.destination}
+              </h2>
+              <span className="text-gray-400">
+                {flightResults.total_results || flightResults.flights?.length || 0} Flüge gefunden
+              </span>
+            </div>
+
+            {flightResults.lowest_price && (
+              <div className="bg-green-900/30 border border-green-500 rounded-lg p-4 mb-4">
+                <p className="text-green-400 text-lg">
+                  💰 Günstigster Preis: <span className="font-bold text-2xl">€{flightResults.lowest_price}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Booking Links */}
+            <div className="flex gap-2 mb-4">
+              <a
+                href={generateBookingLink(origin, destination, flightDate || new Date().toISOString().split('T')[0])}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-400 transition-colors"
+              >
+                🔗 Auf Aviasales buchen
+              </a>
+              <a
+                href={generateSkyscannerLink(origin, destination, flightDate || new Date().toISOString().split('T')[0])}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-400 transition-colors"
+              >
+                🔗 Auf Skyscanner buchen
+              </a>
+            </div>
+
+            {/* Flight Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-2 px-3 text-green-400">Preis</th>
+                    <th className="text-left py-2 px-3 text-green-400">Airline</th>
+                    <th className="text-left py-2 px-3 text-green-400">Stops</th>
+                    <th className="text-left py-2 px-3 text-green-400">Datum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(flightResults.flights || []).slice(0, 15).map((flight: any, i: number) => (
+                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
+                      <td className="py-2 px-3 text-white font-semibold">€{flight.price}</td>
+                      <td className="py-2 px-3 text-gray-300">
+                        {flight.airline_name || flight.airline || flight.validating_airline || '-'}
+                      </td>
+                      <td className="py-2 px-3 text-gray-300">
+                        {flight.stops ?? flight.transfers ?? (flight.itineraries?.[0]?.stops) ?? '-'}
+                      </td>
+                      <td className="py-2 px-3 text-gray-300">
+                        {flight.departure_at?.slice(0, 10) || flightResults.date || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
